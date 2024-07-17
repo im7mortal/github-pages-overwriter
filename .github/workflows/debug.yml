@@ -1,0 +1,19 @@
+name: Debug with the act
+on:
+  push:
+    tags:
+      - 'debug*'
+jobs:
+  dummy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ACTIONS_PAT }}
+      - name: Run integration test
+        uses: dev/github-pages-overwriter@v0
+        with:
+          source-directory: test
+          gh-token: ${{ secrets.ACTIONS_PAT }}
+          target-branch: debug
