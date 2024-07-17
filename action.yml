@@ -24,6 +24,14 @@ inputs:
     description: Whether to ignore empty commits
     required: false
     default: "false"
+  user-name:
+    description: The Git user.name configuration
+    required: false
+    default: "Github Pages Overwriter"
+  user-email:
+    description: The Git user.email configuration
+    required: false
+    default: "GithubPagesOverwriter@users.noreply.github.com"
 
 runs:
   using: composite
@@ -47,7 +55,15 @@ runs:
           git remote set-url origin https://x-access-token:${{ inputs.gh-token }}@github.com/${{ inputs.repository }}
 
         }
+        
+        configure_git() {
+          # Configure Git user name and email
+          git config user.name "${{ inputs.user-name }}"
+          git config user.email "${{ inputs.user-email }}"
+        }
+        
         modify_origin
+        configure_git
         
         # The following 2 lines are not really necessary,
         # because we do not intend to push current branch.
