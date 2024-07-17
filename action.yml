@@ -39,7 +39,10 @@ runs:
 
     - shell: bash
       run: |
-        
+        install_rsync() {
+          sudo apt-get update
+          sudo apt-get install -y rsync
+        }
         modify_origin() {
           # Check if the GitHub token is not set
           if [ -z "${{ inputs.gh-token }}" ]; then
@@ -62,46 +65,65 @@ runs:
           git config user.email "${{ inputs.user-email }}"
         }
         
+        create_temp_directory() {
+          # Save the original directory
+          original_dir=$(pwd)
+          echo "$original_dir" > /tmp/original_directory.txt
+        
+          # Create a temporary directory
+          temp_dir=$(mktemp -d)
+          cd "$temp_dir"
+          echo "$temp_dir" > /tmp/temp_directory.txt
+        }
+
+        rewrite_content() {
+          rsync -av --exclude='.git' --delete $original_dir/${{ inputs.source-directory }}/ "$temp_dir"
+        }
+  
+        cleanup_temp_directory() {
+          # Move back to the original directory and remove the temporary directory
+          original_dir=$(cat /tmp/original_directory.txt)
+          temp_dir=$(cat /tmp/temp_directory.txt)
+          cd "$original_dir"
+          rm -rf "$temp_dir"
+          rm /tmp/temp_directory.txt
+        }
+        
+        
+        copy_git_directory() {
+          # Copy the .git directory to the temporary directory
+          cp -r "$original_dir/.git" "$temp_dir/"
+        }
+        
+        fetch_target_branch() {
+          git fetch origin ${{ inputs.target-branch }}
+          git checkout ${{ inputs.target-branch }}
+        }
+        
+        commit_changes() {
+          git add -A
+          if [ "${{ inputs.ignore-empty }}" = "false" ]; then
+            git commit --allow-empty -m "Automated publish"
+          else
+            git commit -m "Automated publish" || echo "No changes to commit"
+          fi
+        }
+        
+        push_changes() {
+          git push origin HEAD:refs/heads/${{ inputs.target-branch }}
+        }
+      
+
+        install_rsync
+        create_temp_directory
+        copy_git_directory
         modify_origin
         configure_git
-        
-        # The following 2 lines are not really necessary,
-        # because we do not intend to push current branch.
-        # But we choose to use target branch name as a temporary local work branch,
-        # thus avoid a potential error of committing to the trigger branch.
-        git branch -f ${{ inputs.target-branch }} HEAD
-        git checkout ${{ inputs.target-branch }}
-
-        # The commit and push happen to work without authentication
-        # https://docs.github.com/en/actions/reference/authentication-in-a-workflow
-        git config user.name "Github Pages Overwriter"
-        git config user.email "GithubPagesOverwriter@users.noreply.github.com"
-
-        # The previous commit message may contain reference to github issues,
-        # we wipe it out, so that it won't show up in the inevitable duplicate commit.
-        git commit --amend -m "This commit will be automatically published"
-
-        # Check if we should allow empty commits
-        if [ "${{ inputs.ignore-empty }}" = "false" ]; then
-          git commit --allow-empty -m "Automated publish"
-        else
-          git commit -m "Automated publish" || echo "No changes to commit"
-        fi
-
-    - name: Push the build output to github pages
-      shell: bash
-      ##if: ${{ inputs.source-directory == '.' }}
-      # Astonishedly, the "if" command does not work in an action shipped to marketplace,
-      # so that there is even a 3rd-party github action to do that
-      # (https://github.com/marketplace/actions/conditional-value-for-github-action)
-      # But that seems like an overkill. So, we'd use "if" in bash instead.
-      run: >  # https://yaml-multiline.info/
-        if [ "${{ inputs.source-directory }}" == "." ]; then
-          git push -f origin HEAD:refs/heads/${{ inputs.target-branch }}
-        else
-          # Inspired from https://gist.github.com/cobyism/4730490#gistcomment-1374989
-          git push -f origin `git subtree split -P ${{ inputs.source-directory }}`:refs/heads/${{ inputs.target-branch }}
-        fi
+        fetch_target_branch
+        rewrite_content
+        commit_changes
+        push_changes
+        cleanup_temp_directory
 
 branding:
   icon: copy
