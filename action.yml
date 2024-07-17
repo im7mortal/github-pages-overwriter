@@ -12,6 +12,14 @@ inputs:
     description: The name of the branch that would be OVERWRITTEN by current workdir, you will then configure your Github Pages to serve this branch.
     required: false
     default: gh-pages
+  repository:
+    description: The GitHub repository (in the format 'owner/repo') if you want to push it to other repo
+    required: false
+    default: ${{ github.repository }}
+  gh-token:
+    description: The GitHub token used for authentication
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -19,6 +27,24 @@ runs:
 
     - shell: bash
       run: |
+        
+        modify_origin() {
+          # Check if the GitHub token is not set
+          if [ -z "${{ inputs.gh-token }}" ]; then
+            # Check if the input repository is equal to the GitHub repository
+            if [ "${{ inputs.repository }}" == "${{ github.repository }}" ]; then
+              return 0  # No changes needed, return from the function
+            else
+              echo "Error: GitHub token (gh-token) is required to push to other repo."
+              exit 1  # Exit with an error
+            fi
+          fi
+        
+          git remote set-url origin https://x-access-token:${{ inputs.gh-token }}@github.com/${{ inputs.repository }}
+
+        }
+        modify_origin
+        
         # The following 2 lines are not really necessary,
         # because we do not intend to push current branch.
         # But we choose to use target branch name as a temporary local work branch,
