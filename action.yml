@@ -20,6 +20,10 @@ inputs:
     description: The GitHub token used for authentication
     required: false
     default: ""
+  ignore-empty:
+    description: Whether to ignore empty commits
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -61,13 +65,12 @@ runs:
         # we wipe it out, so that it won't show up in the inevitable duplicate commit.
         git commit --amend -m "This commit will be automatically published"
 
-        # Generate such a new file to make sure the subsequent commit would succeed
-        # Such a file WITHOUT leading dot (.) is also visible in outcome website.
-        # FYI: filename with leading dot (.) or underscore (_) would be ignored by Jekyll,
-        # which Github Pages depends on. So we use a normal filename here.
-        date > ${{ inputs.source-directory}}/publish_date.txt
-        git add --force ${{ inputs.source-directory }}
-        git commit -m "Automated publish"
+        # Check if we should allow empty commits
+        if [ "${{ inputs.ignore-empty }}" = "false" ]; then
+          git commit --allow-empty -m "Automated publish"
+        else
+          git commit -m "Automated publish" || echo "No changes to commit"
+        fi
 
     - name: Push the build output to github pages
       shell: bash
