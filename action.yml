@@ -7,8 +7,7 @@ description: Overwrite your Github Pages branch with content of current workdir,
 inputs:
   source-directory:
     description: The name of the source directory that you wish it to become the wwwroot of your website
-    required: false
-    default: .
+    required: true
   target-branch:
     description: The name of the branch that would be OVERWRITTEN by current workdir, you will then configure your Github Pages to serve this branch.
     required: false
