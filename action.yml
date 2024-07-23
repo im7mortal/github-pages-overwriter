@@ -64,12 +64,11 @@ runs:
         create_temp_directory() {
           # Save the original directory
           original_dir=$(pwd)
-          echo "$original_dir" > /tmp/original_directory.txt
         
-          # Create a temporary directory
-          temp_dir=$(mktemp -d)
+          # Create a temporary directory in the same directory to ensure it's on the same partition otherwise we will have problems with hardlinks
+          temp_dir=$(mktemp -d "${original_dir}/tmp.XXXXXX")
+        
           cd "$temp_dir"
-          echo "$temp_dir" > /tmp/temp_directory.txt
         }
         
         set_src_copy_path() {
@@ -87,8 +86,9 @@ runs:
           # change directory to keep correct directory structure - otherwise find will give absolute paths
           cd "$src_copy_dir"
 
-          # Copy files from original_dir to temp_dir except .git
-          find . -mindepth 1 ! -path './.git*' -exec cp --parents -a '{}' "$temp_dir" \;
+          # Create hard links for all files in the target directory (except .git) ; Helps with huge files
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type d -exec mkdir -p "$temp_dir/{}" \;
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type f -exec ln "{}" "$temp_dir/{}" \;
         
           # we must come back to temp directory for next steps (I don't like it)
           cd "$temp_dir"
@@ -97,11 +97,8 @@ runs:
   
         cleanup_temp_directory() {
           # Move back to the original directory and remove the temporary directory
-          original_dir=$(cat /tmp/original_directory.txt)
-          temp_dir=$(cat /tmp/temp_directory.txt)
           cd "$original_dir"
           rm -rf "$temp_dir"
-          rm /tmp/temp_directory.txt
         }
         
         
