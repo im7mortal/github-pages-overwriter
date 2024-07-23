@@ -39,10 +39,6 @@ runs:
 
     - shell: bash
       run: |
-        install_rsync() {
-          sudo apt-get update
-          sudo apt-get install -y rsync
-        }
         modify_origin() {
           # Check if the GitHub token is not set
           if [ -z "${{ inputs.gh-token }}" ]; then
@@ -75,9 +71,28 @@ runs:
           cd "$temp_dir"
           echo "$temp_dir" > /tmp/temp_directory.txt
         }
+        
+        set_src_copy_path() {
+          if [ "${{ inputs.source-directory }}" = "." ]; then
+            src_copy_dir="$original_dir"
+          else
+            src_copy_dir="$original_dir/${{ inputs.source-directory }}"
+          fi
+        }
 
         rewrite_content() {
-          rsync -av --exclude='.git' --delete $original_dir/${{ inputs.source-directory }}/ "$temp_dir"
+          # Remove all files and dirs from temp_dir except .git
+          find "$temp_dir" -mindepth 1 ! -regex '^'"$temp_dir"'/.git\(/.*\)?' -exec rm -rf {} +
+
+          # change directory to keep correct directory structure - otherwise find will give absolute paths
+          cd "$src_copy_dir"
+
+          # Copy files from original_dir to temp_dir except .git
+          find . -mindepth 1 ! -path './.git*' -exec cp --parents -a '{}' "$temp_dir" \;
+        
+          # we must come back to temp directory for next steps (I don't like it)
+          cd "$temp_dir"
+
         }
   
         cleanup_temp_directory() {
@@ -113,9 +128,8 @@ runs:
           git push origin HEAD:refs/heads/${{ inputs.target-branch }}
         }
       
-
-        install_rsync
         create_temp_directory
+        set_src_copy_path
         copy_git_directory
         modify_origin
         configure_git
