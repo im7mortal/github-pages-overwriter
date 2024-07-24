@@ -83,9 +83,9 @@ runs:
           git config user.email "${{ inputs.user-email }}"
         }
         
-        fetch_target_branch_in_tmp_repo() {
-          git fetch origin ${{ inputs.target-branch }}
-          git checkout ${{ inputs.target-branch }}
+        create_orphan_branch_in_tmp_repo() {
+          temp_branch=tmp-owerwrite-random
+          git checkout --orphan ${temp_branch}
         }
         
         
@@ -121,8 +121,10 @@ runs:
           fi
         }
         
-        push_changes() {
-          git push origin HEAD:refs/heads/${{ inputs.target-branch }}
+        force_push_changes() {
+          git checkout ${{ inputs.target-branch }}
+          git reset --hard ${temp_branch}
+          git push -f origin ${{ inputs.target-branch }}
         }
         
         cleanup_temp_directory() {
@@ -136,11 +138,11 @@ runs:
         clone_git_repo_in_tmp
         modify_origin_in_tmp_repo
         configure_tmp_repo
-        fetch_target_branch_in_tmp_repo
+        create_orphan_branch_in_tmp_repo
         set_src_copy_path
         rewrite_content
         commit_changes
-        push_changes
+        force_push_changes
         cleanup_temp_directory
 
 branding:
