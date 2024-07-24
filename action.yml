@@ -32,6 +32,10 @@ inputs:
     description: The Git user.email configuration
     required: false
     default: "GithubPagesOverwriter@users.noreply.github.com"
+  overwrite-commit-message:
+    description: Message to set to overwrite commit
+    required: false
+    default: "Automated publish"
 
 runs:
   using: composite
@@ -115,9 +119,9 @@ runs:
         commit_changes() {
           git add -A
           if [ "${{ inputs.ignore-empty }}" = "false" ]; then
-            git commit --allow-empty -m "Automated publish"
+            git commit --allow-empty -m "${{ inputs.overwrite-commit-message }}"
           else
-            git commit -m "Automated publish" || echo "No changes to commit"
+            git commit -m "${{ inputs.overwrite-commit-message }}" || echo "No changes to commit"
           fi
         }
         
