@@ -17,7 +17,7 @@ inputs:
     required: false
     default: ${{ github.repository }}
   gh-token:
-    description: The GitHub token used for authentication
+    description: The GitHub token used for authentication if you use act or other repository
     required: false
     default: ""
   ignore-empty:
@@ -39,7 +39,29 @@ runs:
 
     - shell: bash
       run: |
-        modify_origin() {
+        
+        create_temp_directory() {
+          # Save the original directory
+          original_dir=$(pwd)
+          
+          # Create a temporary directory in the same directory to ensure it's on the same partition otherwise we will have problems with hardlinks
+          temp_dir=$(mktemp -d "${original_dir}/tmp.XXXXXX")
+        }
+        
+        cd_temp_dir() {
+          cd "$temp_dir"
+        }
+        
+        cd_orig_dir() {
+          cd "$original_dir"
+        }
+        
+        clone_git_repo_in_tmp() {
+          # Actually we just copy .git directory
+          cp -r "$original_dir/.git" "$temp_dir/"
+        }
+        
+        modify_origin_in_tmp_repo() {
           # Check if the GitHub token is not set
           if [ -z "${{ inputs.gh-token }}" ]; then
             # Check if the input repository is equal to the GitHub repository
@@ -55,21 +77,17 @@ runs:
 
         }
         
-        configure_git() {
+        configure_tmp_repo() {
           # Configure Git user name and email
           git config user.name "${{ inputs.user-name }}"
           git config user.email "${{ inputs.user-email }}"
         }
         
-        create_temp_directory() {
-          # Save the original directory
-          original_dir=$(pwd)
-        
-          # Create a temporary directory in the same directory to ensure it's on the same partition otherwise we will have problems with hardlinks
-          temp_dir=$(mktemp -d "${original_dir}/tmp.XXXXXX")
-        
-          cd "$temp_dir"
+        fetch_target_branch_in_tmp_repo() {
+          git fetch origin ${{ inputs.target-branch }}
+          git checkout ${{ inputs.target-branch }}
         }
+        
         
         set_src_copy_path() {
           if [ "${{ inputs.source-directory }}" = "." ]; then
@@ -90,26 +108,8 @@ runs:
           find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type d -exec mkdir -p "$temp_dir/{}" \;
           find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type f -exec ln "{}" "$temp_dir/{}" \;
         
-          # we must come back to temp directory for next steps (I don't like it)
-          cd "$temp_dir"
-
-        }
-  
-        cleanup_temp_directory() {
-          # Move back to the original directory and remove the temporary directory
-          cd "$original_dir"
-          rm -rf "$temp_dir"
-        }
+          cd_temp_dir
         
-        
-        copy_git_directory() {
-          # Copy the .git directory to the temporary directory
-          cp -r "$original_dir/.git" "$temp_dir/"
-        }
-        
-        fetch_target_branch() {
-          git fetch origin ${{ inputs.target-branch }}
-          git checkout ${{ inputs.target-branch }}
         }
         
         commit_changes() {
@@ -124,17 +124,25 @@ runs:
         push_changes() {
           git push origin HEAD:refs/heads/${{ inputs.target-branch }}
         }
+        
+        cleanup_temp_directory() {
+          # Move back to the original directory and remove the temporary directory
+          cd "$original_dir"
+          rm -rf "$temp_dir"
+        }
       
         create_temp_directory
+        cd_temp_dir
+        clone_git_repo_in_tmp
+        modify_origin_in_tmp_repo
+        configure_tmp_repo
+        fetch_target_branch_in_tmp_repo
         set_src_copy_path
-        copy_git_directory
-        modify_origin
-        configure_git
-        fetch_target_branch
         rewrite_content
         commit_changes
         push_changes
         cleanup_temp_directory
+        cd_orig_dir                                       # we must come back to temp directory for next steps
 
 branding:
   icon: copy
