@@ -56,10 +56,6 @@ runs:
           cd "$temp_dir"
         }
         
-        cd_orig_dir() {
-          cd "$original_dir"
-        }
-        
         clone_git_repo_in_tmp() {
           # Actually we just copy .git directory
           cp -r "$original_dir/.git" "$temp_dir/"
@@ -146,7 +142,6 @@ runs:
         commit_changes
         push_changes
         cleanup_temp_directory
-        cd_orig_dir                                       # we must come back to temp directory for next steps
 
 branding:
   icon: copy
