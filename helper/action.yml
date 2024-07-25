@@ -1,0 +1,57 @@
+name: GitHub Pages Overwriter tester
+author: im7mortal
+
+description: Tester for actual action.yml
+
+inputs:
+  source-directory:
+    description: The name of the source directory that you wish it to become the wwwroot of your website
+    required: true
+  target-branch:
+    description: The name of the branch that would be OVERWRITTEN by current workdir, you will then configure your Github Pages to serve this branch.
+    required: false
+    default: gh-pages
+  repository:
+    description: The GitHub repository (in the format 'owner/repo') if you want to push it to other repo
+    required: false
+    default: ""
+  gh-token:
+    description: The GitHub token used for authentication if you use act or other repository
+    required: false
+    default: ""
+  ignore-empty:
+    description: Whether to ignore empty commits
+    required: false
+    default: "false"
+  user-name:
+    description: The Git user.name configuration
+    required: false
+    default: "Github Pages Overwriter"
+  user-email:
+    description: The Git user.email configuration
+    required: false
+    default: "GithubPagesOverwriter@users.noreply.github.com"
+  overwrite-commit-message:
+    description: Message to set to overwrite commit
+    required: false
+    default: "Automated publish"
+
+runs:
+  using: composite
+  steps:
+    - name: Test case 1 overwrite from root directory
+      uses: dev/github-pages-overwriter@v0
+      with:
+        source-directory: ${{ inputs.source-directory }}
+        target-branch: ${{ inputs.target-branch }}
+        repository: ${{ inputs.repository }}
+        gh-token: ${{ inputs.gh-token }}
+        ignore-empty: ${{ inputs.ignore-empty }}
+        user-name: ${{ inputs.user-name }}
+        user-email: ${{ inputs.user-email }}
+        overwrite-commit-message: ${{ inputs.overwrite-commit-message }}
+    - name: Check file content using PyGithub
+      env:
+        GITHUB_TOKEN: ${{ inputs.gh-token }}
+      run: |
+        python validate.py ${{ inputs.repository }} ${{ inputs.target-branch }} ${{ inputs.source-directory }}
