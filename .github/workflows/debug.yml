@@ -7,13 +7,39 @@ jobs:
   dummy:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --root-user-action=ignore PyGithub
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.ACTIONS_PAT }}
-      - name: Run integration test
+      - name: Test case 1 overwrite from custom directory
         uses: dev/github-pages-overwriter@v0
         with:
           source-directory: test
-          gh-token: ${{ secrets.ACTIONS_PAT }}
           target-branch: debug
+      - name: Check file content using PyGithub
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTIONS_PAT }}
+        run: |
+          python validate.py ${{ github.repository }} debug test
+
+      - name: Test case 1 overwrite from test directory
+        uses: dev/helper@v0
+        with:
+          source-directory: test
+          target-branch: debug
+          gh-token: ${{ secrets.ACTIONS_PAT }}
+          repository: ${{ github.repository }}
+
+      - name: Test case 2 overwrite from root directory
+        uses: dev/helper@v0
+        with:
+          source-directory: .
+          target-branch: debug
+          gh-token: ${{ secrets.ACTIONS_PAT }}
+          repository: ${{ github.repository }}
