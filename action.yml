@@ -1,0 +1,148 @@
+name: GitHub Pages Overwriter
+author: rayluo
+
+# Description needs to be shorter than 125 bytes.
+description: Overwrite your Github Pages branch with content of current workdir, thus deploy/publish without polluting your repo history.
+
+inputs:
+  source-directory:
+    description: The name of the source directory that you wish it to become the wwwroot of your website
+    required: true
+  target-branch:
+    description: The name of the branch that would be OVERWRITTEN by current workdir, you will then configure your Github Pages to serve this branch.
+    required: false
+    default: gh-pages
+  repository:
+    description: The GitHub repository (in the format 'owner/repo') if you want to push it to other repo
+    required: false
+    default: ${{ github.repository }}
+  gh-token:
+    description: The GitHub token used for authentication if you use act or other repository
+    required: false
+    default: ""
+  ignore-empty:
+    description: Whether to ignore empty commits
+    required: false
+    default: "false"
+  user-name:
+    description: The Git user.name configuration
+    required: false
+    default: "Github Pages Overwriter"
+  user-email:
+    description: The Git user.email configuration
+    required: false
+    default: "GithubPagesOverwriter@users.noreply.github.com"
+  overwrite-commit-message:
+    description: Message to set to overwrite commit
+    required: false
+    default: "Automated publish"
+
+runs:
+  using: composite
+  steps:
+
+    - shell: bash
+      run: |
+        
+        create_temp_directory() {
+          # Save the original directory
+          original_dir=$(pwd)
+          
+          # Create a temporary directory in the same directory to ensure it's on the same partition otherwise we will have problems with hardlinks
+          temp_dir=$(mktemp -d "${original_dir}/tmp.XXXXXX")
+        }
+        
+        cd_temp_dir() {
+          cd "$temp_dir"
+        }
+        
+        clone_git_repo_in_tmp() {
+          # Actually we just copy .git directory
+          cp -r "$original_dir/.git" "$temp_dir/"
+        }
+        
+        modify_origin_in_tmp_repo() {
+          # Check if the GitHub token is not set
+          if [ -z "${{ inputs.gh-token }}" ]; then
+            # Check if the input repository is equal to the GitHub repository
+            if [ "${{ inputs.repository }}" == "${{ github.repository }}" ]; then
+              return 0  # No changes needed, return from the function
+            else
+              echo "Error: GitHub token (gh-token) is required to push to other repo."
+              exit 1  # Exit with an error
+            fi
+          fi
+        
+          git remote set-url origin https://x-access-token:${{ inputs.gh-token }}@github.com/${{ inputs.repository }}
+
+        }
+        
+        configure_tmp_repo() {
+          # Configure Git user name and email
+          git config user.name "${{ inputs.user-name }}"
+          git config user.email "${{ inputs.user-email }}"
+        }
+        
+        create_orphan_branch_in_tmp_repo() {
+          temp_branch=tmp-owerwrite-random
+          git checkout --orphan ${temp_branch}
+        }
+        
+        
+        set_src_copy_path() {
+          if [ "${{ inputs.source-directory }}" = "." ]; then
+            src_copy_dir="$original_dir"
+          else
+            src_copy_dir="$original_dir/${{ inputs.source-directory }}"
+          fi
+        }
+
+        rewrite_content() {
+          # change directory to keep correct directory structure - otherwise find will give absolute paths
+          cd "$src_copy_dir"
+
+          # Create hard links for all files in the target directory (except .git) ; Helps with huge files
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type d -exec mkdir -p "$temp_dir/{}" \;
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type f -exec ln "{}" "$temp_dir/{}" \;
+        
+          cd_temp_dir
+        
+        }
+        
+        commit_changes() {
+          git add -A
+          if [ "${{ inputs.ignore-empty }}" = "false" ]; then
+            git commit --allow-empty -m "${{ inputs.overwrite-commit-message }}"
+          else
+            git commit -m "${{ inputs.overwrite-commit-message }}" || echo "No changes to commit"
+          fi
+        }
+        
+        force_push_changes() {
+          git checkout ${{ inputs.target-branch }}
+          git reset --hard ${temp_branch}
+          git push -f origin ${{ inputs.target-branch }}
+        }
+        
+        cleanup_temp_directory() {
+          # Move back to the original directory and remove the temporary directory
+          cd "$original_dir"
+          rm -rf "$temp_dir"
+        }
+      
+        create_temp_directory
+        cd_temp_dir
+        clone_git_repo_in_tmp
+        modify_origin_in_tmp_repo
+        configure_tmp_repo
+        create_orphan_branch_in_tmp_repo
+        set_src_copy_path
+        rewrite_content
+        commit_changes
+        force_push_changes
+        cleanup_temp_directory
+
+branding:
+  icon: copy
+  color: green
+
