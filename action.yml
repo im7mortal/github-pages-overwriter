@@ -98,9 +98,6 @@ runs:
         }
 
         rewrite_content() {
-          # Remove all files and dirs from temp_dir except .git
-          find "$temp_dir" -mindepth 1 ! -regex '^'"$temp_dir"'/.git\(/.*\)?' -exec rm -rf {} +
-
           # change directory to keep correct directory structure - otherwise find will give absolute paths
           cd "$src_copy_dir"
 
