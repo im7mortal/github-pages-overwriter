@@ -105,8 +105,8 @@ runs:
           cd "$src_copy_dir"
 
           # Create hard links for all files in the target directory (except .git) ; Helps with huge files
-          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type d -exec mkdir -p "$temp_dir/{}" \;
-          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git*' -type f -exec ln "{}" "$temp_dir/{}" \;
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type d -exec mkdir -p "$temp_dir/{}" \;
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type f -exec ln "{}" "$temp_dir/{}" \;
         
           cd_temp_dir
         
