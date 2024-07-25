@@ -7,12 +7,35 @@ description: Overwrite your Github Pages branch with content of current workdir,
 inputs:
   source-directory:
     description: The name of the source directory that you wish it to become the wwwroot of your website
-    required: false
-    default: .
+    required: true
   target-branch:
     description: The name of the branch that would be OVERWRITTEN by current workdir, you will then configure your Github Pages to serve this branch.
     required: false
     default: gh-pages
+  repository:
+    description: The GitHub repository (in the format 'owner/repo') if you want to push it to other repo
+    required: false
+    default: ${{ github.repository }}
+  gh-token:
+    description: The GitHub token used for authentication if you use act or other repository
+    required: false
+    default: ""
+  ignore-empty:
+    description: Whether to ignore empty commits
+    required: false
+    default: "false"
+  user-name:
+    description: The Git user.name configuration
+    required: false
+    default: "Github Pages Overwriter"
+  user-email:
+    description: The Git user.email configuration
+    required: false
+    default: "GithubPagesOverwriter@users.noreply.github.com"
+  overwrite-commit-message:
+    description: Message to set to overwrite commit
+    required: false
+    default: "Automated publish"
 
 runs:
   using: composite
@@ -20,44 +43,105 @@ runs:
 
     - shell: bash
       run: |
-        # The following 2 lines are not really necessary,
-        # because we do not intend to push current branch.
-        # But we choose to use target branch name as a temporary local work branch,
-        # thus avoid a potential error of committing to the trigger branch.
-        git branch -f ${{ inputs.target-branch }} HEAD
-        git checkout ${{ inputs.target-branch }}
+        
+        create_temp_directory() {
+          # Save the original directory
+          original_dir=$(pwd)
+          
+          # Create a temporary directory in the same directory to ensure it's on the same partition otherwise we will have problems with hardlinks
+          temp_dir=$(mktemp -d "${original_dir}/tmp.XXXXXX")
+        }
+        
+        cd_temp_dir() {
+          cd "$temp_dir"
+        }
+        
+        clone_git_repo_in_tmp() {
+          # Actually we just copy .git directory
+          cp -r "$original_dir/.git" "$temp_dir/"
+        }
+        
+        modify_origin_in_tmp_repo() {
+          # Check if the GitHub token is not set
+          if [ -z "${{ inputs.gh-token }}" ]; then
+            # Check if the input repository is equal to the GitHub repository
+            if [ "${{ inputs.repository }}" == "${{ github.repository }}" ]; then
+              return 0  # No changes needed, return from the function
+            else
+              echo "Error: GitHub token (gh-token) is required to push to other repo."
+              exit 1  # Exit with an error
+            fi
+          fi
+        
+          git remote set-url origin https://x-access-token:${{ inputs.gh-token }}@github.com/${{ inputs.repository }}
 
-        # The commit and push happen to work without authentication
-        # https://docs.github.com/en/actions/reference/authentication-in-a-workflow
-        git config user.name "Github Pages Overwriter"
-        git config user.email "GithubPagesOverwriter@users.noreply.github.com"
+        }
+        
+        configure_tmp_repo() {
+          # Configure Git user name and email
+          git config user.name "${{ inputs.user-name }}"
+          git config user.email "${{ inputs.user-email }}"
+        }
+        
+        fetch_target_branch_in_tmp_repo() {
+          git fetch origin ${{ inputs.target-branch }}
+          git checkout ${{ inputs.target-branch }}
+        }
+        
+        
+        set_src_copy_path() {
+          if [ "${{ inputs.source-directory }}" = "." ]; then
+            src_copy_dir="$original_dir"
+          else
+            src_copy_dir="$original_dir/${{ inputs.source-directory }}"
+          fi
+        }
 
-        # The previous commit message may contain reference to github issues,
-        # we wipe it out, so that it won't show up in the inevitable duplicate commit.
-        git commit --amend -m "This commit will be automatically published"
+        rewrite_content() {
+          # Remove all files and dirs from temp_dir except .git
+          find "$temp_dir" -mindepth 1 ! -regex '^'"$temp_dir"'/.git\(/.*\)?' -exec rm -rf {} +
 
-        # Generate such a new file to make sure the subsequent commit would succeed
-        # Such a file WITHOUT leading dot (.) is also visible in outcome website.
-        # FYI: filename with leading dot (.) or underscore (_) would be ignored by Jekyll,
-        # which Github Pages depends on. So we use a normal filename here.
-        date > ${{ inputs.source-directory}}/publish_date.txt
-        git add --force ${{ inputs.source-directory }}
-        git commit -m "Automated publish"
+          # change directory to keep correct directory structure - otherwise find will give absolute paths
+          cd "$src_copy_dir"
 
-    - name: Push the build output to github pages
-      shell: bash
-      ##if: ${{ inputs.source-directory == '.' }}
-      # Astonishedly, the "if" command does not work in an action shipped to marketplace,
-      # so that there is even a 3rd-party github action to do that
-      # (https://github.com/marketplace/actions/conditional-value-for-github-action)
-      # But that seems like an overkill. So, we'd use "if" in bash instead.
-      run: >  # https://yaml-multiline.info/
-        if [ "${{ inputs.source-directory }}" == "." ]; then
-          git push -f origin HEAD:refs/heads/${{ inputs.target-branch }}
-        else
-          # Inspired from https://gist.github.com/cobyism/4730490#gistcomment-1374989
-          git push -f origin `git subtree split -P ${{ inputs.source-directory }}`:refs/heads/${{ inputs.target-branch }}
-        fi
+          # Create hard links for all files in the target directory (except .git) ; Helps with huge files
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type d -exec mkdir -p "$temp_dir/{}" \;
+          find . -mindepth 1 ! -path "./$(basename "$temp_dir")/*" ! -path './.git' ! -path './.git/*' -type f -exec ln "{}" "$temp_dir/{}" \;
+        
+          cd_temp_dir
+        
+        }
+        
+        commit_changes() {
+          git add -A
+          if [ "${{ inputs.ignore-empty }}" = "false" ]; then
+            git commit --allow-empty -m "${{ inputs.overwrite-commit-message }}"
+          else
+            git commit -m "${{ inputs.overwrite-commit-message }}" || echo "No changes to commit"
+          fi
+        }
+        
+        push_changes() {
+          git push origin HEAD:refs/heads/${{ inputs.target-branch }}
+        }
+        
+        cleanup_temp_directory() {
+          # Move back to the original directory and remove the temporary directory
+          cd "$original_dir"
+          rm -rf "$temp_dir"
+        }
+      
+        create_temp_directory
+        cd_temp_dir
+        clone_git_repo_in_tmp
+        modify_origin_in_tmp_repo
+        configure_tmp_repo
+        fetch_target_branch_in_tmp_repo
+        set_src_copy_path
+        rewrite_content
+        commit_changes
+        push_changes
+        cleanup_temp_directory
 
 branding:
   icon: copy
